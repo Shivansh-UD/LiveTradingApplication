@@ -1,0 +1,19 @@
+# Secret keys - KABHI GitHub pe nahi!
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Conda/pip
+*.egg-info/
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
