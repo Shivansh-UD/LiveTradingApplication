@@ -256,7 +256,7 @@ def csp_screener(options_chain, current_price, risk_free_rate=0.05):
             'return_if_expired', ascending=False
         )
         
-        logger.info(f"Found {len(csp_candidates)} CSP candidates!")
+        logger.info(f"Found {len(csp_candidates)} CSP candidates.")
         return csp_candidates
         
     except Exception as e:
@@ -414,46 +414,82 @@ def covered_call_screener(options_chain, current_price,
 #THIS USED FOR TESTING ONLY
 if __name__ == "__main__":
     
-    # fetcher.py used to get the data
     import sys
     sys.path.append('.')
     from src.data.fetcher import get_stock_data, get_options_chain, get_iv_data
-    
-    TEST_TICKER = "F"
-    
-    print("\n" + "="*50)
-    print(f"LAYER 2 - ANALYTICS ENGINE - {TEST_TICKER}")
-    print("="*50)
-    
-    # fecth the data
-    iv_data = get_iv_data(TEST_TICKER)
-    options = get_options_chain(TEST_TICKER)
-    
-    current_price = iv_data['current_price']
-    print(f"\nCurrent Price: ${current_price}")
 
-    # TEMPORARY DEBUG — raw puts data dekhte hain
-    print("\n🔍 RAW PUTS DATA:")
-    raw_options = get_options_chain(TEST_TICKER)
-    if raw_options:
-        puts_df = raw_options['puts']
-        print(puts_df[['strike', 'bid', 'ask', 
-                    'impliedVolatility', 
-                    'openInterest']].to_string())
-    
-    # Black Scholes test
-    print("\n📐 BLACK SCHOLES TEST:")
+    TEST_TICKER = "F"
+
+    # ============================================================
+    # HELPER — clean separator lines
+    # ============================================================
+    def section(title):
+        print(f"\n{'='*55}")
+        print(f"  {title}")
+        print(f"{'='*55}")
+
+    def subsection(title):
+        print(f"\n  {'-'*50}")
+        print(f"  {title}")
+        print(f"  {'-'*50}")
+
+    # ============================================================
+    # HEADER
+    # ============================================================
+    print("\n" + "="*55)
+    print(f"   WHEEL STRATEGY ANALYZER")
+    print(f"   Stock: {TEST_TICKER}  |  Powered by Black-Scholes + Greeks")
+    print("="*55)
+
+    # ============================================================
+    # FETCH DATA
+    # ============================================================
+    iv_data  = get_iv_data(TEST_TICKER)
+    options  = get_options_chain(TEST_TICKER)
+    current_price = iv_data['current_price']
+
+    # ============================================================
+    # SECTION 1 — STOCK SNAPSHOT
+    # ============================================================
+    section("STOCK SNAPSHOT")
+    print(f"""
+  Ticker        : {TEST_TICKER}
+  Current Price : ${current_price}
+  52-Week High  : ${iv_data['week_52_high']}
+  52-Week Low   : ${iv_data['week_52_low']}
+  Price Position: {iv_data['price_position_pct']}% of 52-week range
+  Avg Volume    : {iv_data['avg_volume']:,}
+  Market Cap    : ${iv_data['market_cap']:,}
+    """)
+
+    # ============================================================
+    # SECTION 2 — BLACK SCHOLES FAIR VALUE
+    # ============================================================
+    section("BLACK-SCHOLES FAIR VALUE")
     bs_price = black_scholes(
         S=current_price,
-        K=current_price * 0.95,  # 5% OTM put
+        K=current_price * 0.95,
         T=25/365,
         r=0.05,
         sigma=0.35
     )
-    print(f"Fair value of 5% OTM put: ${bs_price}")
-    
-    # Greeks test
-    print("\n🏛️ GREEKS TEST:")
+    print(f"""
+  What is this?
+  Black-Scholes calculates the THEORETICAL fair price
+  of an option. If market price > fair value = overpriced
+  (good time to SELL). If market < fair value = cheap
+  (good time to BUY).
+
+  5% OTM Put Fair Value : ${bs_price}
+  Strike Used           : ${round(current_price * 0.95, 2)}
+  Days to Expiry        : 25
+  IV Used               : 35%
+    """)
+
+    # ============================================================
+    # SECTION 3 — GREEKS REPORT
+    # ============================================================
+    section("GREEKS REPORT")
     greeks = calculate_greeks(
         S=current_price,
         K=current_price * 0.95,
@@ -461,38 +497,107 @@ if __name__ == "__main__":
         r=0.05,
         sigma=0.35
     )
-    for key, value in greeks.items():
-        print(f"  {key}: {value}")
-    
-    # Wheel Screener test
-    print("\n CASH SECURED PUT SCREENER:")
+    print(f"""
+  DELTA  (price sensitivity)  : {greeks['put_delta']}
+         → Stock moves $1 up, put changes ${abs(greeks['put_delta'])}
+
+  THETA  (daily time decay)   : ${greeks['theta']}
+         → This option loses ${abs(greeks['theta'])} in value every day
+         → As SELLERS this is OUR PROFIT per day!
+
+  GAMMA  (delta acceleration) : {greeks['gamma']}
+         → How fast delta is changing (high near expiry = risky)
+
+  VEGA   (IV sensitivity)     : {greeks['vega']}
+         → IV moves 1%, option price changes ${greeks['vega']}
+    """)
+
+    # ============================================================
+    # SECTION 4 — CSP CANDIDATES
+    # ============================================================
+    section("CASH SECURED PUT (CSP) CANDIDATES")
+    print("""
+  WHAT IS A CSP?
+  We SELL a put contract and collect premium upfront.
+  If stock stays above strike = we keep the premium (profit!)
+  If stock falls below strike = we buy 100 shares at strike
+  (but our real cost = strike - premium collected)
+
+  HOW TO READ THIS TABLE:
+  strike           = price we agree to buy shares at
+  mid_price        = premium WE COLLECT (per share x100)
+  delta            = probability of being assigned (0.30 = 30%)
+  theta            = how much premium we earn per day
+  iv_pct           = implied volatility (higher = better premium)
+  return_if_expired= % return if option expires worthless
+    """)
+
     if options:
         candidates = csp_screener(options, current_price)
         if candidates is not None and not candidates.empty:
-            print(f"\nTop CSP Candidates:")
-            print(candidates[['strike', 'bid', 'delta', 
-                             'theta', 'iv_pct', 
-                             'return_if_expired']].to_string())
+            print(f"  Found {len(candidates)} CSP candidates:\n")
+            # print each candidate cleanly
+            for i, (_, row) in enumerate(candidates.iterrows(), 1):
+                print(f"  #{i} STRIKE ${row['strike']:.1f}")
+                print(f"      Premium Collected : ${row['mid_price']:.2f} per share (${row['mid_price']*100:.0f} per contract)")
+                print(f"      Bid / Ask         : ${row['bid']:.2f} / ${row['ask']:.2f}")
+                print(f"      Delta             : {row['delta']:.3f} ({row['delta']*100:.1f}% assignment chance)")
+                print(f"      Daily Theta Earn  : ${abs(row['theta']):.4f} per day")
+                print(f"      Implied Volatility: {row['iv_pct']:.1f}%")
+                print(f"      Return if Expired : {row['return_if_expired']:.2f}%")
+                print(f"      Cost if Assigned  : ${row['strike'] - row['mid_price']:.2f} per share")
+                print()
         else:
-            print("No candidates found matching criteria")
-    
-    # Covered Call Screener test
-    print("\n COVERED CALL SCREENER:")
+            print("  No CSP candidates found matching criteria.")
+
+    # ============================================================
+    # SECTION 5 — COVERED CALL CANDIDATES
+    # ============================================================
+    section("COVERED CALL (CC) CANDIDATES")
+    cost_basis = current_price - 0.30
+    print(f"""
+  WHAT IS A COVERED CALL?
+  We already OWN shares (from CSP assignment).
+  We SELL a call contract and collect premium.
+  If stock stays below strike = keep premium (profit!)
+  If stock rises above strike = shares get called away
+  but we still profit (premium + gain from cost basis)
+
+  Your Cost Basis : ${cost_basis:.2f} per share
+
+  HOW TO READ THIS TABLE:
+  strike           = price shares get sold at if called away
+  mid_price        = premium WE COLLECT (per share x100)
+  delta            = probability of being called away
+  return_if_expired= % return if option expires worthless
+  profit_if_called = total profit per share if assigned
+  roi_if_called    = total ROI% if shares get called away
+    """)
+
     if options:
-        # If ford got assigned at $16.63
-        # and we got $0.30 premium when we did the CSP 
-        # then the cost basis = 16.63 - 0.30 = 16.33
-        cost_basis = current_price - 0.30
-        
         cc_candidates = covered_call_screener(
             options, current_price, cost_basis
         )
         if cc_candidates is not None and not cc_candidates.empty:
-            print(f"\nTop Covered Call Candidates:")
-            print(cc_candidates[['strike', 'bid', 'delta',
-                                 'theta', 'iv_pct',
-                                 'return_if_expired',
-                                 'profit_if_called',
-                                 'roi_if_called']].to_string())
+            print(f"  Found {len(cc_candidates)} CC candidates:\n")
+            for i, (_, row) in enumerate(cc_candidates.iterrows(), 1):
+                print(f"  #{i} STRIKE ${row['strike']:.1f}")
+                print(f"      Premium Collected : ${row['mid_price']:.2f} per share (${row['mid_price']*100:.0f} per contract)")
+                print(f"      Bid / Ask         : ${row['bid']:.2f} / ${row['ask']:.2f}")
+                print(f"      Delta             : {row['delta']:.3f} ({row['delta']*100:.1f}% assignment chance)")
+                print(f"      Daily Theta Earn  : ${abs(row['theta']):.4f} per day")
+                print(f"      Implied Volatility: {row['iv_pct']:.1f}%")
+                print(f"      Return if Expired : {row['return_if_expired']:.2f}%")
+                print(f"      Profit if Called  : ${row['profit_if_called']:.2f} per share")
+                print(f"      ROI if Called Away: {row['roi_if_called']:.2f}%")
+                print()
         else:
-            print("No CC candidates found matching criteria")
+            print("  No CC candidates found matching criteria.")
+
+    # ============================================================
+    # FOOTER
+    # ============================================================
+    print("="*55)
+    print("  DISCLAIMER: This is for educational purposes only.")
+    print("  Always do your own research before trading!")
+    print("="*55 + "\n")
