@@ -287,7 +287,7 @@ def predict_iv(ticker: str, model_package: dict) -> dict:
             "cc_signal": cc_signal,     
             "recommendation": recommendation,
             "model_mae_pct": round(model_package['mae'] * 100, 4)
-}
+        }
 
     except Exception as e:
         logger.error(f"Prediction error: {e}")
