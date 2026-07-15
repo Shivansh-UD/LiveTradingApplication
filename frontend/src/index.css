@@ -1,0 +1,43 @@
+/* Global dark theme — Bloomberg terminal vibes! */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-card: #1a1a2e;
+  --accent-green: #00ff88;
+  --accent-blue: #4f9cf9;
+  --accent-red: #ff4757;
+  --accent-yellow: #ffd32a;
+  --text-primary: #ffffff;
+  --text-secondary: #8892a4;
+  --border: #2a2a3e;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+/* Smooth transitions everywhere */
+* {
+  transition: all 0.2s ease;
+}
