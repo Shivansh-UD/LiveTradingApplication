@@ -1,0 +1,10 @@
+1. This is how we start a web application when working with fastAPI
+
+uvicorn src.api.main:app --reload --port 8000
+
+2. That will open a basic localhost:8000  webpage similar to spring boot, but if we do "/docs" aty the end of the URL we will get a much better UI called the Swagger UI automatically.
+
+http://localhost:8000
+http://localhost:8000/docs
+
+3.
