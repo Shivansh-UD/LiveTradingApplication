@@ -232,14 +232,6 @@ if __name__ == "__main__":
     print("="*55)
 
     section("FETCHING NEWS + ANALYZING SENTIMENT")
-    print(f"""
-  What is happening here?
-  We fetch recent Ford news headlines and run
-  each one through FinBERT — a financial AI
-  trained on millions of financial articles!
-  It understands terms like "beat estimates"
-  and "supply chain issues" perfectly!
-    """)
 
     result = get_sentiment_signal(TEST_TICKER)
 
