@@ -302,3 +302,118 @@ async def get_options(ticker: str):
     except Exception as e:
         logger.error(f"Options error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+# ENDPOINT 4, tHIS IS OUR 4TH API AND WHAT THIS DOES IS WHEN A USER ENTERS THERE BREAKEVEN PRICE IT FILTERS THE BEST CC AND CSP ACCORDINGLY
+# BREAK-EVEN CALCULATOR
+@app.get("/api/calculate/{ticker}")
+async def calculate_breakeven(ticker: str, breakeven: float):
+    """
+    Filters CSP and CC candidates based on user's break-even
+
+    Example: /api/calculate/F?breakeven=14.50
+    
+    CSP Logic:
+    strike - premium >= breakeven → profitable trade
+
+    CC Logic:  
+    strike + premium >= breakeven → profitable trade
+
+    Args:
+        ticker: Stock symbol like "F"
+        breakeven: User's break-even price per share
+    """
+    try:
+        logger.info(f"Break-even calc for {ticker} @ ${breakeven}")
+
+        # fetch live data
+        iv_data = get_iv_data(ticker)
+
+        if iv_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Ticker {ticker} not found"
+            )
+
+        current_price = iv_data['current_price']
+
+        # NaN price check
+        if not is_valid_price(current_price):
+            raise HTTPException(
+                status_code=503,
+                detail=f"Price unavailable — try during market hours!"
+            )
+
+        # get options chain
+        options = get_options_chain(ticker)
+
+        if options is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No options found"
+            )
+
+        # run screeners
+        csp_df = csp_screener(options, current_price)
+        cc_df = covered_call_screener(
+            options, current_price,
+            cost_basis=breakeven  # user's breakeven = cost basis
+        )
+
+        # BREAK-EVEN FILTER — simple math!
+        # CSP: strike - premium >= breakeven
+        # means even if assigned, still profitable!
+        csp_filtered = []
+        if csp_df is not None and not csp_df.empty:
+            # calculate break-even for each CSP
+            csp_df['csp_breakeven'] = csp_df['strike'] - csp_df['mid_price']
+            csp_df['beats_breakeven'] = csp_df['csp_breakeven'] <= breakeven
+
+            # filter — only show trades that beat breakeven
+            csp_good = csp_df[csp_df['csp_breakeven'] <= breakeven].copy()
+
+            csp_filtered = clean_records(csp_good, [
+                'strike', 'bid', 'ask', 'mid_price',
+                'delta', 'theta', 'iv_pct',
+                'return_if_expired', 'csp_breakeven'
+            ])
+
+        # CC FILTER
+        # CC: strike + premium >= breakeven
+        # means if called away, still profitable
+        cc_filtered = []
+        if cc_df is not None and not cc_df.empty:
+            # calculate break-even for each CC
+            cc_df['cc_breakeven'] = cc_df['strike'] + cc_df['mid_price']
+            cc_df['beats_breakeven'] = cc_df['cc_breakeven'] >= breakeven
+
+            # filter — only show trades that beat breakeven
+            cc_good = cc_df[cc_df['cc_breakeven'] >= breakeven].copy()
+
+            cc_filtered = clean_records(cc_good, [
+                'strike', 'bid', 'ask', 'mid_price',
+                'delta', 'theta', 'iv_pct',
+                'return_if_expired', 'profit_if_called',
+                'roi_if_called', 'cc_breakeven'
+            ])
+
+        return {
+            "ticker": ticker.upper(),
+            "current_price": current_price,
+            "user_breakeven": breakeven,
+            "expiry": options['expiry'],
+            "csp_candidates": csp_filtered,
+            "cc_candidates": cc_filtered,
+            "summary": {
+                "csp_count": len(csp_filtered),
+                "cc_count": len(cc_filtered),
+                "message": f"Found {len(csp_filtered)} CSP and {len(cc_filtered)} CC trades that beat your break-even of ${breakeven}!"
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Break-even calc error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
